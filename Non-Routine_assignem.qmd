@@ -1,0 +1,213 @@
+---
+title: "Reproducible Research"
+subtitle: "Non-Routine Cognitive Analytical Tasks (NRCA)"
+author: "Alain Kalonji"
+date: today
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: true
+    code-summary: "Click to expand R code"
+    embed-resources: true
+    theme: cosmo
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+#  Theoretical Framework: Non-Routine Cognitive Analytical Tasks (NRCA)
+
+The rise of Non-Routine Cognitive Analytical (NRCA) tasks is a direct manifestation of skill-biased technological change (Autor, Levy & Murnane, 2003). These tasks include:
+
+* Analyzing complex information
+* Solving problems
+* Making strategic decisions
+* Designing or interpreting abstract concepts
+
+Unlike manual or routine tasks, these activities are neither easily automated nor easily replaced by algorithms. They have therefore become increasingly central in advanced economies, particularly in the context of the growing digitization of work.
+
+> 📚 **References**:
+> Autor, D., Levy, F., & Murnane, R. (2003). *The Skill Content of Recent Technological Change: An Empirical Exploration*. The Quarterly Journal of Economics, 118(4), 1279–1333.
+> Goos, M., & Manning, A. (2007). *Lousy and Lovely Jobs: The Rising Polarization of Work in Britain*. Review of Economics and Statistics, 89(1), 118–133.
+> OECD (2019). *OECD Employment Outlook 2019: The Future of Work*.
+
+# 📈 Graph Interpretation: NRCA Task Intensity (2011–2020)
+
+This chart shows the standardized evolution of NRCA task intensity in four European countries: **Czechia, Denmark, Italy**, and **EU-28**, between the first quarter of 2011 and the fourth quarter of 2020.
+
+![Evolution of NRCA Task Intensity](5c5d2e76-2da9-44f3-a250-c9877741f268.png)
+
+## 🧩 Key Observations:
+
+* **General upward trend**: All countries show a progressive increase in NRCA intensity, especially after 2015.
+* **Denmark**: sharp increase toward the end of the period, reflecting an innovation-oriented labor market.
+* **Italy**: stagnating trend, possibly due to a slower technological transition.
+* **EU-28**: average trajectory, used here as a benchmark.
+* **Czechia**: gradually aligning with the European trend.
+
+# Limitations and Future Directions
+
+* **Missing data**: Some values are missing for the EU after 2019.
+* **Polarization**: Consider comparing with the evolution of routine tasks (RoutineManual).
+* **Automation**: Results could be linked with indicators of technological adoption.
+
+# Conclusion
+
+The graph confirms a structural trend in the European labor market: a rise in non-routine analytical skills, which are key drivers of employability in a digital world.
+
+> **Denmark** leads the way, followed by **Czechia** and **EU-28**, while **Italy** appears to lag behind.
+
+This reinforces the idea that **education**, **continuous training**, and **adaptation of production systems** are essential levers to promote the adoption of these high-value tasks.
+
+\::: {.panel-tabset}
+
+### R Code (hidden by default)
+
+```{r}
+# All R code blocks required for the complete analysis are included here but will not be displayed by default.
+# See the previously provided scripts for data loading, processing, standardization, and visualization.
+```
+
+\:::
+
+
+# Data Preparation and Processing
+
+
+##  1. Load ISCO Data (ISCO1 to ISCO9)
+
+```{r}
+library(readxl)
+library(dplyr)
+library(stringr)
+library(Hmisc)
+library(ggplot2)
+
+isco_list <- lapply(1:9, function(i) {
+  df <- read_excel("C:/Users/Alain/Downloads/Eurostat_employment_isco.xlsx", sheet = paste0("ISCO", i))
+  df$ISCO <- i
+  return(df)
+})
+
+all_data <- bind_rows(isco_list)
+```
+
+#2. Select 4 Countries (excluding Belgium, Spain, Poland, France)
+
+```{r}
+countries <- setdiff(colnames(all_data), c("TIME", "ISCO"))
+selected_countries <- setdiff(countries, c("Belgium", "Spain", "Poland", "France"))[1:4]
+```
+
+# 3. Compute Employment Shares per Country
+
+```{r}
+
+
+for (country in selected_countries) {
+  total_vec <- Reduce(`+`, lapply(isco_list, function(df) as.numeric(df[[country]])))
+  total_col <- rep(total_vec, times = 9)
+  all_data[[paste0("total_", country)]] <- total_col
+  all_data[[paste0("share_", country)]] <- as.numeric(all_data[[country]]) / total_col
+}
+```
+
+# 4. Load O*NET Task Data and Aggregate by ISCO Level 1
+
+```{r}
+task_data <- read.csv("C:/Users/Alain/Downloads/onet_tasks.csv")
+task_data$isco08_1dig <- str_sub(task_data$isco08, 1, 1) %>% as.numeric()
+
+aggdata <- aggregate(task_data, by = list(task_data$isco08_1dig), FUN = mean, na.rm = TRUE)
+colnames(aggdata)[1] <- "ISCO"
+combined <- left_join(all_data, aggdata, by = "ISCO")
+```
+
+# 5. Define Task Groups
+
+```{r}
+task_groups <- list(
+  NRCA = c("t_4A2a4", "t_4A2b2", "t_4A4a1"),
+  RoutineManual = c("t_4A3a3", "t_4C2d1i", "t_4C3d3"),
+  Social = c("t_4A4a4", "t_4C3a4", "t_4A4a2")
+)
+```
+
+# 6. Standardize and Compute Indices
+
+```{r}
+task_indices <- c()
+
+for (group_name in names(task_groups)) {
+  tasks <- task_groups[[group_name]]
+  
+  for (country in selected_countries) {
+    std_cols <- c()
+    
+    for (task in tasks) {
+      if (task %in% colnames(combined)) {
+        values <- combined[[task]]
+        weights <- combined[[paste0("share_", country)]]
+        
+        if (sum(!is.na(values)) > 1 && sum(weights, na.rm = TRUE) > 0) {
+          m <- wtd.mean(values, weights, na.rm = TRUE)
+          sd <- sqrt(wtd.var(values, weights, na.rm = TRUE))
+          
+          std_col <- paste0("std_", country, "_", task)
+          combined[[std_col]] <- (values - m) / sd
+          std_cols <- c(std_cols, std_col)
+        }
+      }
+    }
+    
+    if (length(std_cols) > 0) {
+      index_col <- paste0(country, "_", group_name)
+      combined[[index_col]] <- rowSums(combined[, std_cols], na.rm = TRUE)
+      
+      m <- wtd.mean(combined[[index_col]], combined[[paste0("share_", country)]], na.rm = TRUE)
+      sd <- sqrt(wtd.var(combined[[index_col]], combined[[paste0("share_", country)]], na.rm = TRUE))
+      combined[[paste0("std_", index_col)]] <- (combined[[index_col]] - m) / sd
+      
+      task_indices <- c(task_indices, paste0("std_", index_col))
+    }
+  }
+}
+```
+
+# 7. Compare NRCA Intensity Across Countries
+
+```{r}
+comparison_df <- data.frame()
+
+for (country in selected_countries) {
+  group <- "NRCA"
+  weighted_col <- paste0("weighted_", group, "_", country)
+  
+  combined[[weighted_col]] <- combined[[paste0("std_", country, "_", group)]] * combined[[paste0("share_", country)]]
+  
+  agg <- aggregate(combined[[weighted_col]], by = list(combined$TIME), FUN = sum, na.rm = TRUE)
+  colnames(agg) <- c("Period", "Intensity")
+  agg$Country <- country
+  comparison_df <- rbind(comparison_df, agg)
+}
+```
+
+# 8. Multi-Country Visualization with ggplot2
+
+```{r}
+ggplot(comparison_df, aes(x = Period, y = Intensity, color = Country)) +
+  geom_line(size = 1.1) +
+  geom_point(size = 2) +
+  labs(
+    title = "Evolution of NRCA Task Intensity (Standardized) Across Countries",
+    x = "Period", y = "Task Intensity (NRCA)",
+    color = "Country"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+```
