@@ -1,0 +1,124 @@
+---
+title: "Metaanalysis in R"
+author: "Alain Kalonji"
+date: "`r Sys.Date()`"
+format:  
+  html:
+    theme: lumen
+    toc: true
+    toc_float: true
+    title-block-banner: true
+execute:
+  echo: false  
+---
+
+```{r setup, include=FALSE}
+library(meta)
+library(metafor)
+library(dplyr)
+library(readxl)
+```
+# SCRIPTS
+```{r}
+metaanalysis_data_1_ <- read_excel("C:/Users/Alain/Downloads/metaanalysis_data (1).xlsx")
+df <- metaanalysis_data_1_  
+str(df)
+```
+
+```{r}
+required_cols <- c("N_boys", "Mean_boys_play_male", "SD_boys_play_male",
+                  "N_girls", "Mean_girls_play_male", "SD_girls_play_male", "Study")
+stopifnot(all(required_cols %in% names(df)))
+```
+
+```{r}
+m_male_toys <- metacont(
+  n.e = df$N_boys,
+  mean.e = df$Mean_boys_play_male,
+  sd.e = df$SD_boys_play_male,
+  n.c = df$N_girls,
+  mean.c = df$Mean_girls_play_male,
+  sd.c = df$SD_girls_play_male,
+  studlab = df$Study,
+  data = df,
+  comb.fixed = TRUE,
+  comb.random = TRUE,
+  sm = "SMD"
+)
+```
+# RESUME
+
+📈 First Funnel Plot: Basic Funnel Plot
+Axes
+X-axis: Standardized Mean Difference (SMD) – representing the effect size (e.g., preference for male-typed toys).
+
+Y-axis: Standard Error – studies with higher precision (larger samples) appear closer to the top.
+
+Interpretation
+The graph appears slightly asymmetric, with more studies on the right side of the mean effect line.
+
+This may suggest the presence of publication bias, where studies with significant or positive effects are more likely to be published.
+
+However, a roughly funnel-shaped distribution supports no major bias, although formal tests would be needed to confirm.
+
+📊 Second Funnel Plot: Contour-Enhanced Funnel Plot
+Additional Features
+This version includes shaded significance contours:
+
+Dark blue: p < 0.01 (very significant)
+
+Blue: p < 0.05 (significant)
+
+Light blue: p < 0.10 (marginally significant)
+
+White: p > 0.10 (non-significant)
+
+Interpretation
+Most studies fall in the shaded blue zones, indicating statistically significant results.
+
+The asymmetry, with a lack of points on the left side, may again hint at publication bias.
+
+Studies in the top center region are more precise (smaller standard errors), contributing strongly to the overall result.
+
+The plot confirms the robustness of the meta-analytic finding (SMD ≈ 1), while visually suggesting potential bias due to missing non-significant studies.
+
+
+```{r}
+summary(m_male_toys)
+```
+
+```{r}
+forest(m_male_toys,
+       sortvar = TE,
+       xlab = "Standardized Mean Difference (SMD)",
+       leftcols = c("studlab", "n.e", "mean.e", "sd.e", "n.c", "mean.c", "sd.c"),
+       leftlabs = c("Study", "N boys", "Mean boys", "SD boys", "N girls", "Mean girls", "SD girls"),
+       rightcols = c("effect", "ci"),
+       rightlabs = c("SMD", "95% CI"),
+       col.square = "blue",
+       col.diamond = "red",
+       col.diamond.lines = "red")
+```
+
+```{r}
+cat("The standardized mean difference (SMD) of", round(m_male_toys$TE.random, 2), 
+    "(", round(m_male_toys$lower.random, 2), "to", round(m_male_toys$upper.random, 2), ") suggests that",
+    ifelse(m_male_toys$TE.random > 0, "boys", "girls"),
+    "show a", ifelse(abs(m_male_toys$TE.random) > 0.8, "large", 
+                    ifelse(abs(m_male_toys$TE.random) > 0.5, "moderate", "small")),
+    "preference for male-typed toys compared to", 
+    ifelse(m_male_toys$TE.random > 0, "girls", "boys"), ".")
+```
+
+```{r}
+# Funnel plot simple
+funnel(m_male_toys)
+```
+
+```{r}
+# Contour-enhanced funnel plot
+contour_levels <- c(0.90, 0.95, 0.99)
+contour_colors <- c("darkblue", "blue", "lightblue")
+funnel(m_male_toys, contour = contour_levels, col.contour = contour_colors)
+legend("topright", c("p < 0.10", "p < 0.05", "p < 0.01"), bty = "n", fill = contour_colors)
+```
